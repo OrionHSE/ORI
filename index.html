@@ -185,14 +185,10 @@
             ORI- HSE Assistant
         </div>
         
-        <div id="setupNotice" class="setup-notice">
-            ⚠️ <strong>Setup Required:</strong> Please add your OpenAI API key in the JavaScript section below (line 20).
-        </div>
-        
         <div class="chat-messages" id="chatMessages">
             <div class="message assistant">
                 <div class="message-content">
-                    Hello! I'm your AI assistant. How can I help you today?
+                    Hello! I'm your ORI-HSE Assistant. How can I help you today?
                 </div>
             </div>
         </div>
@@ -275,9 +271,6 @@
                 // Add assistant response
                 addMessage(assistantMessage, 'assistant');
                 conversationHistory.push({role: 'assistant', content: assistantMessage});
-                
-                // Hide setup notice after first successful message
-                document.getElementById('setupNotice').style.display = 'none';
                 
             } catch (error) {
                 removeLoading(loadingId);
