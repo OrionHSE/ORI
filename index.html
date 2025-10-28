@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ORI- HSE Assistant V2</title>
+    <title>ORI-HSE Assistant</title>
     <style>
         * {
             margin: 0;
@@ -15,7 +15,6 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
         }
         
-        /* Chat Bubble Button */
         .chat-bubble-btn {
             position: fixed;
             bottom: 20px;
@@ -49,7 +48,6 @@
             background: #c33;
         }
         
-        /* Chat Window */
         .chat-window {
             position: fixed;
             bottom: 90px;
@@ -81,7 +79,6 @@
             }
         }
         
-        /* Mobile Responsive */
         @media (max-width: 480px) {
             .chat-window {
                 width: calc(100vw - 20px);
@@ -260,7 +257,6 @@
     </style>
 </head>
 <body>
-    <!-- Chat Bubble Button -->
     <button class="chat-bubble-btn" onclick="toggleChat()" id="chatBubble">
         <svg viewBox="0 0 24 24" id="bubbleIcon">
             <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/>
@@ -270,10 +266,9 @@
         </svg>
     </button>
 
-    <!-- Chat Window -->
     <div class="chat-window" id="chatWindow">
         <div class="chat-header">
-            <div class="chat-header-title">ORI- HSE Assistant</div>
+            <div class="chat-header-title">ORI-HSE Assistant</div>
             <button class="close-btn" onclick="toggleChat()">×</button>
         </div>
         
@@ -301,7 +296,7 @@
 
     <script>
         const OPENAI_API_KEY = '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';
-        const ASSISTANT_ID = 'asst_7rK0giwd9IbU7IU4Ul3dkkA2';
+        const ASSISTANT_ID = 'asst_7rKOgjwd9IbU7lU4Uj3dkkA2';
         
         let currentThreadId = null;
         
@@ -319,7 +314,6 @@
                 closeIcon.style.display = 'block';
                 document.getElementById('chatInput').focus();
                 
-                // Create a new thread when opening chat if one doesn't exist
                 if (!currentThreadId) {
                     createThread();
                 }
@@ -336,14 +330,22 @@
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${OPENAI_API_KEY}`,
-                        'OpenAI-Beta': 'assistants=v2'
+                        'OpenAI-Beta': 'assistants=v1'
                     }
                 });
                 
+                if (!response.ok) {
+                    const error = await response.json();
+                    console.error('Thread creation error:', error);
+                    throw new Error(`Failed to create thread: ${response.status}`);
+                }
+                
                 const data = await response.json();
                 currentThreadId = data.id;
+                console.log('Thread created:', currentThreadId);
             } catch (error) {
                 console.error('Error creating thread:', error);
+                showError('Failed to initialize chat. Please refresh and try again.');
             }
         }
         
@@ -355,6 +357,10 @@
             
             if (!currentThreadId) {
                 await createThread();
+                if (!currentThreadId) {
+                    showError('Could not start conversation. Please try again.');
+                    return;
+                }
             }
             
             addMessage(message, 'user');
@@ -364,13 +370,14 @@
             toggleInput(false);
             
             try {
-                // Add message to thread
-                await fetch(`https://api.openai.com/v1/threads/${currentThreadId}/messages`, {
+                console.log('Sending message to thread:', currentThreadId);
+                
+                const msgResponse = await fetch(`https://api.openai.com/v1/threads/${currentThreadId}/messages`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${OPENAI_API_KEY}`,
-                        'OpenAI-Beta': 'assistants=v2'
+                        'OpenAI-Beta': 'assistants=v1'
                     },
                     body: JSON.stringify({
                         role: 'user',
@@ -378,46 +385,70 @@
                     })
                 });
                 
-                // Run the assistant
+                if (!msgResponse.ok) {
+                    const error = await msgResponse.json();
+                    console.error('Message error:', error);
+                    throw new Error(`Failed to send message: ${msgResponse.status}`);
+                }
+                
+                console.log('Running assistant...');
                 const runResponse = await fetch(`https://api.openai.com/v1/threads/${currentThreadId}/runs`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${OPENAI_API_KEY}`,
-                        'OpenAI-Beta': 'assistants=v2'
+                        'OpenAI-Beta': 'assistants=v1'
                     },
                     body: JSON.stringify({
                         assistant_id: ASSISTANT_ID
                     })
                 });
                 
+                if (!runResponse.ok) {
+                    const error = await runResponse.json();
+                    console.error('Run error:', error);
+                    throw new Error(`Failed to run assistant: ${runResponse.status}`);
+                }
+                
                 const runData = await runResponse.json();
                 const runId = runData.id;
+                console.log('Run started:', runId);
                 
-                // Poll for completion
-                let runStatus = 'in_progress';
-                while (runStatus === 'in_progress' || runStatus === 'queued') {
+                let runStatus = 'queued';
+                let attempts = 0;
+                const maxAttempts = 60;
+                
+                while ((runStatus === 'in_progress' || runStatus === 'queued') && attempts < maxAttempts) {
                     await new Promise(resolve => setTimeout(resolve, 1000));
+                    attempts++;
                     
                     const statusResponse = await fetch(`https://api.openai.com/v1/threads/${currentThreadId}/runs/${runId}`, {
                         headers: {
                             'Authorization': `Bearer ${OPENAI_API_KEY}`,
-                            'OpenAI-Beta': 'assistants=v2'
+                            'OpenAI-Beta': 'assistants=v1'
                         }
                     });
                     
+                    if (!statusResponse.ok) {
+                        throw new Error(`Status check failed: ${statusResponse.status}`);
+                    }
+                    
                     const statusData = await statusResponse.json();
                     runStatus = statusData.status;
+                    console.log('Run status:', runStatus);
                 }
                 
                 if (runStatus === 'completed') {
-                    // Get messages
                     const messagesResponse = await fetch(`https://api.openai.com/v1/threads/${currentThreadId}/messages`, {
                         headers: {
                             'Authorization': `Bearer ${OPENAI_API_KEY}`,
-                            'OpenAI-Beta': 'assistants=v2'
+                            'OpenAI-Beta': 'assistants=v1'
                         }
                     });
+                    
+                    if (!messagesResponse.ok) {
+                        throw new Error(`Failed to get messages: ${messagesResponse.status}`);
+                    }
                     
                     const messagesData = await messagesResponse.json();
                     const lastMessage = messagesData.data[0];
@@ -426,13 +457,13 @@
                     removeLoading(loadingId);
                     addMessage(assistantMessage, 'assistant');
                 } else {
-                    throw new Error('Run failed');
+                    throw new Error(`Run ended with status: ${runStatus}`);
                 }
                 
             } catch (error) {
                 removeLoading(loadingId);
-                showError('Failed to get response. Please try again.');
-                console.error('Error:', error);
+                console.error('Full error:', error);
+                showError('Failed to get response. Check console for details.');
             } finally {
                 toggleInput(true);
             }
@@ -490,5 +521,5 @@
             return div.innerHTML;
         }
     </script>
-</body> 
+</body>
 </html>
